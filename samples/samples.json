@@ -78,6 +78,11 @@
                 "title": "Low latency",
                 "description": "Example showing how to use dash.js to play low latency streams.",
                 "href": "low-latency/index.html"
+            },
+            {
+                "title": "Live with MPD Patches",
+                "description": "Example showing playout of a live stream that is presented as a series of MPD patches",
+                "href": "live-streaming/live-mpd-patch.html"
             }
         ]
     },

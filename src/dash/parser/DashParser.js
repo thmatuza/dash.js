@@ -65,7 +65,7 @@ function DashParser() {
             emptyNodeForm:      'object',
             stripWhitespaces:   false,
             enableToStringFunc: true,
-            ignoreRoot:         true,
+            ignoreRoot:         false,
             matchers:           matchers
         });
 
@@ -94,7 +94,16 @@ function DashParser() {
         }
 
         const jsonTime = window.performance.now();
-        objectIron.run(manifest);
+
+        // handle full MPD and Patch ironing separately
+        if (manifest.Patch) {
+            manifest = manifest.Patch; // drop root reference
+            // apply iron to individual patch elements which are MPD elements
+            manifest.__children.forEach((operation) => objectIron.run(operation));
+        } else {
+            manifest = manifest.MPD; // drop root reference
+            objectIron.run(manifest);
+        }
 
         const ironedTime = window.performance.now();
         logger.info('Parsing complete: ( xml2json: ' + (jsonTime - startTime).toPrecision(3) + 'ms, objectiron: ' + (ironedTime - jsonTime).toPrecision(3) + 'ms, total: ' + ((ironedTime - startTime) / 1000).toPrecision(3) + 's)');

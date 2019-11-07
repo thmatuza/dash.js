@@ -32,18 +32,18 @@
  * @class
  * @ignore
  */
-class Mpd {
-    constructor() {
-        this.manifest = null;
-        this.suggestedPresentationDelay = 0;
-        this.availabilityStartTime = null;
-        this.availabilityEndTime = Number.POSITIVE_INFINITY;
-        this.timeShiftBufferDepth = Number.POSITIVE_INFINITY;
-        this.maxSegmentDuration = Number.POSITIVE_INFINITY;
-        this.publishTime = null;
-        this.minimumUpdatePeriod = NaN;
-        this.mediaPresentationDuration = NaN;
+class PatchOperation {
+    constructor(type, xpath, value) {
+        this.type = type;
+        this.xpath = xpath;
+        this.value = value;
+        this.position = null;
+    }
+
+    getMpdTarget(root) {
+        let isSiblingOperation = this.type == 'remove' || this.type == 'replace' || this.position == 'before' || this.position == 'after';
+        return this.xpath.getMpdTarget(root, isSiblingOperation);
     }
 }
 
-export default Mpd;
+export default PatchOperation;

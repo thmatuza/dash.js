@@ -37,10 +37,12 @@ import ManifestInfo from './vo/ManifestInfo';
 import Event from './vo/Event';
 import FactoryMaker from '../core/FactoryMaker';
 import DashManifestModel from './models/DashManifestModel';
+import PatchManifestModel from './models/PatchManifestModel';
 
 function DashAdapter() {
     let instance,
         dashManifestModel,
+        patchManifestModel,
         voPeriods,
         voAdaptations,
         currentMediaInfo,
@@ -53,6 +55,7 @@ function DashAdapter() {
 
     function setup() {
         dashManifestModel = DashManifestModel(context).getInstance();
+        patchManifestModel = PatchManifestModel(context).getInstance();
         reset();
     }
 
@@ -390,6 +393,24 @@ function DashAdapter() {
         return dashManifestModel.getManifestUpdatePeriod(manifest, latencyOfLastUpdate);
     }
 
+    function getPatchLocation(manifest) {
+        const patchLocation = dashManifestModel.getPatchLocation(manifest);
+        const publishTime = dashManifestModel.getPublishTime(manifest);
+        if (patchLocation && publishTime) {
+            // grab the ttl from the patch location
+            const ttl = parseInt(patchLocation.ttl, 10) * 1000;
+
+            // if the patch location has not expired provide the location back
+            if (publishTime.getTime() + ttl > new Date().getTime()) {
+                // actual url is the text of the node
+                return patchLocation.__text;
+            }
+        }
+
+        // either there is no patch location or it has expired
+        return null;
+    }
+
     function getUseCalculatedLiveEdgeTimeForMediaInfo(mediaInfo) {
         const voAdaptation = getAdaptationForMediaInfo(mediaInfo);
         return dashManifestModel.getUseCalculatedLiveEdgeTimeForAdaptation(voAdaptation);
@@ -397,6 +418,10 @@ function DashAdapter() {
 
     function getIsDVB(manifest) {
         return dashManifestModel.hasProfile(manifest, PROFILE_DVB);
+    }
+
+    function getIsPatch(manifest) {
+        return dashManifestModel.getIsPatch(manifest);
     }
 
     function getBaseURLsFromElement(node) {
@@ -451,6 +476,132 @@ function DashAdapter() {
         voPeriods = [];
         voAdaptations = {};
         currentMediaInfo = {};
+    }
+
+    /**
+     * Checks if the supplied manifest and patch are compatible for application
+     * @param  {XMLObject}  manifest A full manifest xml model
+     * @param  {XMLObject}  patch    A patch manifest xml model
+     * @return {Boolean}   True if the patch can be applied to the given model
+     *                     False otherwise
+     */
+    function isPatchValid(manifest, patch) {
+        let manifestId = dashManifestModel.getId(manifest);
+        let patchManifestId = patchManifestModel.getMpdId(patch);
+        let publishTime = dashManifestModel.getPublishTime(manifest);
+        let originalPublishTime = patchManifestModel.getOriginalPublishTime(patch);
+
+        // Patches are considered compatible if the following are true
+        // - MPD@id == Patch@mpdId
+        // - MPD@publishTime == Patch@originalPublishTime
+        // - All values in comparisons exist
+        return manifestId && patchManifestId && (manifestId == patchManifestId) &&
+            publishTime && originalPublishTime && (publishTime.getTime() == originalPublishTime.getTime());
+    }
+
+    /**
+     * Takes a given patch and applies it to the provided manifest
+     * @param  {XMLObject} manifest A full manifest xml model
+     * @param  {XMLObject} patch    A patch manifest xml model
+     */
+    function applyPatchToManifest(manifest, patch) {
+        // Assumptions:
+        // - Patch validity has already been determined using isPatchValid
+        patchManifestModel.getPatchOperations(patch)
+            .forEach((operation) => {
+                let result = operation.getMpdTarget(manifest);
+
+                // operation supplies a path that doesn't match mpd, skip
+                if (result === null) {
+                    return;
+                }
+
+                let name = result.name;
+                let target = result.target;
+                let leaf = result.leaf;
+
+                // short-circuit for attribute selectors
+                if (operation.xpath.findsAttribute()) {
+                    switch (operation.type) {
+                        case 'add':
+                        case 'replace':
+                            // add and replace are just setting the value
+                            target[name] = operation.value;
+                            break;
+                        case 'remove':
+                            // remove is deleting the value
+                            delete target[name];
+                            break;
+                    }
+                    return;
+                }
+
+                // determine the relative insert position prior to possible removal
+                let relativePosition = (target[name + '_asArray'] || []).indexOf(leaf);
+                let insertBefore = (operation.position == 'prepend' || operation.position == 'before');
+
+                // perform removal operation first, we have already captured the appropriate relative position
+                if (operation.type == 'remove' || operation.type == 'replace') {
+                    // note that we ignore the ws attribute of patch operations as it does not effect parsed mpd operations
+
+                    // purge the directly named entity
+                    delete target[name];
+
+                    // if we did have a positional reference we need to purge from array set and restore X2JS proper semantics
+                    if (relativePosition != -1) {
+                        let targetArray = target[name + '_asArray'];
+                        targetArray.splice(relativePosition, 1);
+                        if (targetArray.length > 1) {
+                            target[name] = targetArray;
+                        } else if (targetArray.length == 1) {
+                            // xml parsing semantics, singular asArray must be non-array in the unsuffixed key
+                            target[name] = targetArray[0];
+                        } else {
+                            // all nodes of this type deleted, remove entry
+                            delete target[name + '_asArray'];
+                        }
+                    }
+                }
+
+                // Perform any add/replace operations now, technically RFC5261 only allows a single element to take the
+                // place of a replaced element while the add case allows an arbitrary number of children.
+                // Due to the both operations requiring the same insertion logic they have been combined here and we will
+                // not enforce single child operations for replace, assertions should be made at patch parse time if necessary
+                if (operation.type == 'add' || operation.type == 'replace') {
+                    // value will be an object with element name keys pointing to arrays of objects
+                    Object.keys(operation.value).forEach((insert) => {
+                        let insertNodes = operation.value[insert];
+
+                        let updatedNodes = target[insert + '_asArray'] || [];
+                        if (updatedNodes.length === 0 && target[insert]) {
+                            updatedNodes.push(target[insert]);
+                        }
+
+                        if (updatedNodes.length === 0) {
+                            // no original nodes for this element type
+                            updatedNodes = insertNodes;
+                        } else {
+                            // compute the position we need to insert at, default to end of set
+                            let position = updatedNodes.length;
+                            if (insert == name && relativePosition != -1) {
+                                // if the inserted element matches the operation target (not leaf) and there is a relative position we
+                                // want the insert position to be set such that our insertion is relative to original position
+                                position = relativePosition + (insertBefore ? 0 : 1);
+                            } else {
+                                // otherwise we are in an add append/prepend case or replace case that removed the target name completely
+                                position = insertBefore ? 0 : updatedNodes.length;
+                            }
+
+                            // we dont have to perform element removal for the replace case as that was done above
+                            updatedNodes.splice.apply(updatedNodes, [position, 0].concat(insertNodes));
+                        }
+
+                        // now we properly reset the element keys on the target to match parsing semantics
+                        target[insert + '_asArray'] = updatedNodes;
+                        target[insert] = updatedNodes.length == 1 ? updatedNodes[0] : updatedNodes;
+                    });
+                }
+            });
     }
     // #endregion PUBLIC FUNCTIONS
 
@@ -674,11 +825,15 @@ function DashAdapter() {
         getDuration: getDuration,
         getRegularPeriods: getRegularPeriods,
         getLocation: getLocation,
+        getPatchLocation: getPatchLocation,
         getManifestUpdatePeriod: getManifestUpdatePeriod,
         getIsDVB: getIsDVB,
+        getIsPatch: getIsPatch,
         getBaseURLsFromElement: getBaseURLsFromElement,
         getRepresentationSortFunction: getRepresentationSortFunction,
         getCodec: getCodec,
+        isPatchValid: isPatchValid,
+        applyPatchToManifest: applyPatchToManifest,
         reset: reset
     };
 

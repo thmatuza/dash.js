@@ -323,6 +323,14 @@ function DashManifestModel() {
         return isDynamic;
     }
 
+    function getIsPatch(manifest) {
+        return manifest && manifest.hasOwnProperty('mpdId');
+    }
+
+    function getId(manifest) {
+        return (manifest && manifest.id) || null;
+    }
+
     function hasProfile(manifest, profile) {
         let has = false;
 
@@ -358,6 +366,10 @@ function DashManifestModel() {
             delay = manifest.minimumUpdatePeriod;
         }
         return isNaN(delay) ? delay : Math.max(delay - latencyOfLastUpdate, 1);
+    }
+
+    function getPublishTime(manifest) {
+        return manifest && manifest.hasOwnProperty(DashConstants.PUBLISH_TIME) ? new Date(manifest.publishTime) : null;
     }
 
     function getRepresentationCount(adaptation) {
@@ -746,6 +758,10 @@ function DashManifestModel() {
             if (manifest.hasOwnProperty(DashConstants.MAX_SEGMENT_DURATION)) {
                 mpd.maxSegmentDuration = manifest.maxSegmentDuration;
             }
+
+            if (manifest.hasOwnProperty(DashConstants.PUBLISH_TIME)) {
+                mpd.publishTime = new Date(manifest.publishTime);
+            }
         }
 
         return mpd;
@@ -1032,6 +1048,17 @@ function DashManifestModel() {
         return undefined;
     }
 
+    function getPatchLocation(manifest) {
+        if (manifest && manifest.hasOwnProperty(DashConstants.PATCH_LOCATION)) {
+            manifest.PatchLocation = manifest.PatchLocation_asArray[0];
+
+            return manifest.PatchLocation;
+        }
+
+        // no patch location provided
+        return undefined;
+    }
+
     function getSuggestedPresentationDelay(mpd) {
         return mpd && mpd.hasOwnProperty(DashConstants.SUGGESTED_PRESENTATION_DELAY) ? mpd.suggestedPresentationDelay : null;
     }
@@ -1125,10 +1152,13 @@ function DashManifestModel() {
         getLabelsForAdaptation: getLabelsForAdaptation,
         getContentProtectionData: getContentProtectionData,
         getIsDynamic: getIsDynamic,
+        getIsPatch: getIsPatch,
+        getId: getId,
         hasProfile: hasProfile,
         getDuration: getDuration,
         getBandwidth: getBandwidth,
         getManifestUpdatePeriod: getManifestUpdatePeriod,
+        getPublishTime: getPublishTime,
         getRepresentationCount: getRepresentationCount,
         getBitrateListForAdaptation: getBitrateListForAdaptation,
         getRepresentationFor: getRepresentationFor,
@@ -1143,6 +1173,7 @@ function DashManifestModel() {
         getBaseURLsFromElement: getBaseURLsFromElement,
         getRepresentationSortFunction: getRepresentationSortFunction,
         getLocation: getLocation,
+        getPatchLocation: getPatchLocation,
         getUseCalculatedLiveEdgeTimeForAdaptation: getUseCalculatedLiveEdgeTimeForAdaptation,
         getSuggestedPresentationDelay: getSuggestedPresentationDelay,
         getAvailabilityStartTime: getAvailabilityStartTime,
