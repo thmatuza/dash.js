@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <title>Live playback with MPD Patches</title>
+    <script src="../../dist/dash.all.debug.js"></script>
+    <script>
+        function init() {
+            let src = '...';
+
+            const protData = {
+                'com.widevine.alpha': {
+                    'serverURL': '...'
+                }
+            };
+
+            video = document.querySelector('video');
+            player = dashjs.MediaPlayer().create();
+            player.initialize(video, src, true);
+            player.setProtectionData(protData);
+        }
+
+        window.addEventListener('load', init);
+    </script>
+    <!--dash.all.min.js should be used in production over dash.all.debug.js
+        Debug files are not compressed or obfuscated making the file size much larger compared with dash.all.min.js-->
+    <!--<script src="../../dist/dash.all.min.js"></script>-->
+
+    <style>
+        video {
+            width: 640px;
+            height: 360px;
+        }
+    </style>
+    </head>
+    <body>
+        <div class="code">
+            <video controls="true"></video>
+        </div>
+        <script src="../highlighter.js"></script>
+    </body>
+</html>

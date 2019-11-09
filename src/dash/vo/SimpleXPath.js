@@ -28,14 +28,6 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
-
-// This regex will only match a simple XPath component which is defined as
-// - A singular element or attribute reference
-// - For element references:
-//      - a positional match
-//      - a singular attribute equality matcher
-const SIMPLE_XPATH_COMPONENT = new RegExp('([^[]+)(?:\\[([^=]+)(?:="?([^\\]])"?)?\\])?');
-
 /**
  * @class
  * @ignore
@@ -47,24 +39,28 @@ class SimpleXPath {
         this.path = selector.split('/')
             .filter((component) => component.length !== 0) // remove excess empty components
             .map((component) => {
-                let match = SIMPLE_XPATH_COMPONENT.exec(component);
-                let name = match[1];
-                let attr = match[2];
-                let value = match[3];
                 let parsed = {
-                    name: name
+                    name: component
                 };
 
-                if (attr !== undefined) {
-                    if (value === undefined) {
-                        // attribute without a value is considered a positional reference
-                        parsed.position = attr;
-                    } else {
-                        // attribute with explicit value
+                let qualifierPoint = component.indexOf('[');
+                if (qualifierPoint != -1) {
+                    parsed.name = component.substring(0, qualifierPoint);
+
+                    let qualifier = component.substring(qualifierPoint + 1, component.length - 1);
+
+                    let equalityPoint = qualifier.indexOf('=');
+                    if (equalityPoint != -1) {
                         parsed.attribute = {
-                            name: attr,
-                            value: value
+                            name: qualifier.substring(1, equalityPoint), // skip the @
+                            value: qualifier.substring(equalityPoint + 1)
                         };
+
+                        if (parsed.attribute.value[0] == '\'') {
+                            parsed.attribute.value = parsed.attribute.value.substring(1, parsed.attribute.value.length - 1);
+                        }
+                    } else {
+                        parsed.position = qualifier;
                     }
                 }
 

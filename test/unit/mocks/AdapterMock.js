@@ -106,6 +106,10 @@ function AdapterMock () {
         return false;
     };
 
+    this.getIsPatch = function () {
+        return false;
+    };
+
     this.convertDataToRepresentationInfo = function () {
         return null;
     };
