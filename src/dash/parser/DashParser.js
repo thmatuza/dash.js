@@ -99,7 +99,12 @@ function DashParser() {
         if (manifest.Patch) {
             manifest = manifest.Patch; // drop root reference
             // apply iron to individual patch elements which are MPD elements
-            manifest.__children.forEach((operation) => objectIron.run(operation));
+            if (manifest.add_asArray) {
+                manifest.add_asArray.forEach((operand) => objectIron.run(operand))
+            }
+            if (manifest.replace_asArray) {
+                manifest.replace_asArray.forEach((operand) => objectIron.run(operand))
+            }
         } else {
             manifest = manifest.MPD; // drop root reference
             objectIron.run(manifest);
